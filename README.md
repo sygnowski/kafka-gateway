@@ -5,7 +5,7 @@
 
 ### Dependenices
 
-[kafka support in go](github.com/confluentinc/confluent-kafka-go/kafka)
+[kafka support in go](http://github.com/confluentinc/confluent-kafka-go/kafka)
 
 ### Tips
 
