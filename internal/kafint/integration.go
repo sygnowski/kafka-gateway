@@ -1,4 +1,4 @@
-package kafka
+package kafint
 
 import (
 	"fmt"
@@ -13,12 +13,12 @@ type Properties struct {
 	PublishTopic string
 }
 
-type KafkaProducer struct {
+type KafkaIntegrator struct {
 	prod *kafka.Producer
 	cfg  *Properties
 }
 
-func (this *KafkaProducer) Init(props *Properties) {
+func (this *KafkaIntegrator) Init(props *Properties) {
 	fmt.Println("making kafka producer")
 
 	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": props.Server})
@@ -32,7 +32,7 @@ func (this *KafkaProducer) Init(props *Properties) {
 
 }
 
-func (prod *KafkaProducer) Publish(w http.ResponseWriter, req *http.Request) {
+func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
 
@@ -48,7 +48,7 @@ func (prod *KafkaProducer) Publish(w http.ResponseWriter, req *http.Request) {
 
 }
 
-func (prod *KafkaProducer) publishToKafka(data []byte) {
+func (prod *KafkaIntegrator) publishToKafka(data []byte) {
 	fmt.Println("Publishing to Kafka...")
 	fmt.Println(string(data))
 

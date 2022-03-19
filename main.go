@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"s7i.io/kafka-gateway/internal/kafka"
+	"s7i.io/kafka-gateway/internal/kafint"
 )
 
 func main() {
 
-	prod := kafka.KafkaProducer{}
-	prod.Init(&kafka.Properties{
+	prod := kafint.KafkaIntegrator{}
+	prod.Init(&kafint.Properties{
 		Server:       os.Getenv("BROKER"),
 		PublishTopic: os.Getenv("PUBLISH_TOPIC"),
 	})
