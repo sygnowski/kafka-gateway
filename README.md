@@ -8,11 +8,7 @@
 
 ### Dependenices
 
-<<<<<<< HEAD
-[kafka]["https://github.com/confluentinc/confluent-kafka-go"]
-=======
 [kafka support in go](http://github.com/confluentinc/confluent-kafka-go)
->>>>>>> e437431bf63ca7e7449c881d86380eece83df406
 
 ### Tips
 
