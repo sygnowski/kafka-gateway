@@ -25,6 +25,8 @@ dockerRun() {
      -p 8080:8080 \
      -e BROKER=$1 \
      -e PUBLISH_TOPIC=gateway.publish \
+     -e SUBSCRIBE_TOPIC=gateway.subscribe \
+     -e SUBSCRIBE_GROUP_ID=gateway \
      --network dev-network \
      -it --rm s7i/kafka-gateway
 }
