@@ -1,0 +1,14 @@
+###
+
+GET http://localhost:8080/hello
+
+
+###
+
+POST http://localhost:8080/
+Content-Type: application/json
+Correlation: 13
+
+{
+    "name" : "test 1 {{$timestamp}}"
+}

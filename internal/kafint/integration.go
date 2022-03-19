@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -17,16 +18,20 @@ type Properties struct {
 	SubscribeGroupId string
 }
 
+type Correlaction struct {
+	id   string
+	resp chan kafka.Message
+}
+
 type KafkaIntegrator struct {
-	prod *kafka.Producer
-	cons *kafka.Consumer
-	cfg  *Properties
-	ch   chan kafka.Message
+	prod           *kafka.Producer
+	cons           *kafka.Consumer
+	cfg            *Properties
+	correlationMap sync.Map
 }
 
 func (this *KafkaIntegrator) Init(props *Properties) {
 	this.cfg = props
-	this.ch = make(chan kafka.Message, 1)
 
 	fmt.Println("making kafka producer")
 
@@ -47,6 +52,8 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 		panic(err)
 	}
 	this.cons = c
+
+	this.correlationMap = sync.Map{}
 
 	c.Subscribe(props.SubscribeTopic, nil)
 	go this.fetch()
@@ -72,7 +79,7 @@ func (kint *KafkaIntegrator) fetch() {
 				if e.Headers != nil {
 					fmt.Printf("%% Headers: %v\n", e.Headers)
 				}
-				kint.ch <- *e
+				kint.onNewMessage(e)
 			case kafka.Error:
 				// Errors should generally be considered
 				// informational, the client will try to
@@ -85,6 +92,27 @@ func (kint *KafkaIntegrator) fetch() {
 				}
 			default:
 				fmt.Printf("Ignored %v\n", e)
+			}
+		}
+	}
+}
+
+func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
+	if m.Headers != nil {
+		for _, h := range m.Headers {
+			if h.Key == "Correlation" {
+				cid := string(h.Value)
+				println("got cid: " + cid)
+
+				c, _ := kint.correlationMap.Load(cid)
+				if c != nil {
+					corr := c.(*Correlaction)
+					corr.resp <- *m
+					println("cid sent")
+					break
+				} else {
+					println("no map hit for " + cid)
+				}
 			}
 		}
 	}
@@ -104,12 +132,19 @@ func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	}
 	prod.publishToKafka(bodyBytes)
 
+	cid := req.Header.Get("Correlation")
+
+	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
+	prod.correlationMap.Store(cid, c)
+
 	select {
-	case data := <-prod.ch:
+	case data := <-c.resp:
 		w.Write(data.Value)
+		close(c.resp)
 		break
 	case <-time.After(time.Second * 30):
 		io.WriteString(w, "timeout")
+		close(c.resp)
 	}
 
 }

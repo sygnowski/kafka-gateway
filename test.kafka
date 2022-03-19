@@ -1,0 +1,6 @@
+PRODUCER subscribe
+topic: gateway.subscribe
+headers: Correlation=13
+{"test": "ok"}
+
+
