@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
@@ -17,11 +19,14 @@ type Properties struct {
 
 type KafkaIntegrator struct {
 	prod *kafka.Producer
+	cons *kafka.Consumer
 	cfg  *Properties
+	ch   chan kafka.Message
 }
 
 func (this *KafkaIntegrator) Init(props *Properties) {
 	this.cfg = props
+	this.ch = make(chan kafka.Message, 1)
 
 	fmt.Println("making kafka producer")
 
@@ -38,9 +43,51 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 		"group.id":          props.SubscribeGroupId,
 		"auto.offset.reset": "latest",
 	})
+	if err != nil {
+		panic(err)
+	}
+	this.cons = c
 
 	c.Subscribe(props.SubscribeTopic, nil)
+	go this.fetch()
+}
 
+func (kint *KafkaIntegrator) fetch() {
+	run := true
+
+	for run {
+		select {
+		// case sig := <-sigchan:
+		// 	fmt.Printf("Caught signal %v: terminating\n", sig)
+		// 	run = false
+		default:
+			ev := kint.cons.Poll(100)
+			if ev == nil {
+				continue
+			}
+
+			switch e := ev.(type) {
+			case *kafka.Message:
+				fmt.Printf("%% Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
+				if e.Headers != nil {
+					fmt.Printf("%% Headers: %v\n", e.Headers)
+				}
+				kint.ch <- *e
+			case kafka.Error:
+				// Errors should generally be considered
+				// informational, the client will try to
+				// automatically recover.
+				// But in this example we choose to terminate
+				// the application if all brokers are down.
+				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
+				if e.Code() == kafka.ErrAllBrokersDown {
+					run = false
+				}
+			default:
+				fmt.Printf("Ignored %v\n", e)
+			}
+		}
+	}
 }
 
 func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
@@ -56,6 +103,14 @@ func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		defer req.Body.Close()
 	}
 	prod.publishToKafka(bodyBytes)
+
+	select {
+	case data := <-prod.ch:
+		w.Write(data.Value)
+		break
+	case <-time.After(time.Second * 30):
+		io.WriteString(w, "timeout")
+	}
 
 }
 

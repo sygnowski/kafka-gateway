@@ -14,8 +14,10 @@ func main() {
 
 	prod := kafint.KafkaIntegrator{}
 	prod.Init(&kafint.Properties{
-		Server:       os.Getenv("BROKER"),
-		PublishTopic: os.Getenv("PUBLISH_TOPIC"),
+		Server:           os.Getenv("BROKER"),
+		PublishTopic:     os.Getenv("PUBLISH_TOPIC"),
+		SubscribeTopic:   os.Getenv("SUBSCRIBE_TOPIC"),
+		SubscribeGroupId: os.Getenv("SUBSCRIBE_GROUP_ID"),
 	})
 
 	fmt.Println("running server")
