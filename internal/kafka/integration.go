@@ -14,9 +14,8 @@ type Properties struct {
 }
 
 type KafkaProducer struct {
-	prod            *kafka.Producer
-	cfg             *Properties
-	producerChannel chan *kafka.Message
+	prod *kafka.Producer
+	cfg  *Properties
 }
 
 func (this *KafkaProducer) Init(props *Properties) {
@@ -30,10 +29,6 @@ func (this *KafkaProducer) Init(props *Properties) {
 	}
 	this.prod = p
 	this.cfg = props
-
-	this.producerChannel = p.ProduceChannel()
-
-	go this.handleEvents(p.Events())
 
 }
 
@@ -57,29 +52,44 @@ func (prod *KafkaProducer) publishToKafka(data []byte) {
 	fmt.Println("Publishing to Kafka...")
 	fmt.Println(string(data))
 
-	prod.producerChannel <- &kafka.Message{
+	deliveryChan := make(chan kafka.Event)
+
+	msg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
 			Topic:     &prod.cfg.PublishTopic,
-			Partition: 0},
+			Partition: kafka.PartitionAny},
 		Value: data}
+
+	prod.prod.Produce(msg, deliveryChan)
+
+	e := <-deliveryChan
+	m := e.(*kafka.Message)
+	onMessage(m)
+
+	close(deliveryChan)
 }
 
-func (prod *KafkaProducer) handleEvents(events chan kafka.Event) {
+func handleEvents(events chan kafka.Event) {
 
 	for e := range events {
 		switch ev := e.(type) {
 		case *kafka.Message:
 			m := ev
-			if m.TopicPartition.Error != nil {
-				fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
-			} else {
-				fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
-					*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
-			}
+			onMessage(m)
 			return
 
 		default:
 			fmt.Printf("Ignored event: %s\n", ev)
 		}
+	}
+}
+
+func onMessage(m *kafka.Message) {
+	fmt.Println(m)
+	if m.TopicPartition.Error != nil {
+		fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+	} else {
+		fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
+			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 	}
 }
