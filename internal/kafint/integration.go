@@ -9,8 +9,10 @@ import (
 )
 
 type Properties struct {
-	Server       string
-	PublishTopic string
+	Server           string
+	PublishTopic     string
+	SubscribeTopic   string
+	SubscribeGroupId string
 }
 
 type KafkaIntegrator struct {
@@ -19,6 +21,8 @@ type KafkaIntegrator struct {
 }
 
 func (this *KafkaIntegrator) Init(props *Properties) {
+	this.cfg = props
+
 	fmt.Println("making kafka producer")
 
 	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": props.Server})
@@ -28,7 +32,14 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 		panic(err)
 	}
 	this.prod = p
-	this.cfg = props
+
+	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": props.Server,
+		"group.id":          props.SubscribeGroupId,
+		"auto.offset.reset": "latest",
+	})
+
+	c.Subscribe(props.SubscribeTopic, nil)
 
 }
 
