@@ -4,7 +4,7 @@ main () {
 
     case $1 in
         run)
-            dockerRun
+            dockerRun $2
             ;;
         build)
             dockerBuild
@@ -20,7 +20,13 @@ badOpt() {
 }
 
 dockerRun() {
-    docker run --name kafka-gateway -it --rm s7i/kafka-gateway    
+    docker run \
+     --name kafka-gateway \
+     -p 8080:8080 \
+     -e BROKER=$1 \
+     -e PUBLISH_TOPIC=gateway.publish \
+     --network dev-network \
+     -it --rm s7i/kafka-gateway
 }
 
 dockerBuild() {

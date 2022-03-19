@@ -1,0 +1,7 @@
+.dockerignore
+.git
+*.md
+Dockerfile
+#entrypoint.sh
+dev.sh
+*.http

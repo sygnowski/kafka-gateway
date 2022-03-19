@@ -6,12 +6,14 @@ RUN set -ex; \
 
 FROM stack
 
-WORKDIR /opt/kafka-gateway
-COPY go.mod go.mod
-COPY go.sum go.sum
-COPY internal internal
-COPY cmd cmd
-COPY main.go main.go
+COPY entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["sh", "/entrypoint.sh"]
+
+ENV DEV=/opt/kafka-gateway
+RUN mkdir -p $DEV
+
+WORKDIR $DEV
+ADD . $DEV
 
 RUN set -ex; \
   ls -ls; \

@@ -1,11 +1,14 @@
 # Kafka Http Gateway
 
 
+### Commands
+
+ - run `./dev.sh run host.docker.internal:9092`
 
 
 ### Dependenices
 
-[kafka]["github.com/confluentinc/confluent-kafka-go/kafka"]
+[kafka]["https://github.com/confluentinc/confluent-kafka-go"]
 
 ### Tips
 
