@@ -11,6 +11,8 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
+const CORRELATION = "Correlation"
+
 type Properties struct {
 	Server           string
 	PublishTopic     string
@@ -100,7 +102,7 @@ func (kint *KafkaIntegrator) fetch() {
 func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 	if m.Headers != nil {
 		for _, h := range m.Headers {
-			if h.Key == "Correlation" {
+			if h.Key == CORRELATION {
 				cid := string(h.Value)
 				println("got cid: " + cid)
 
@@ -132,19 +134,24 @@ func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	}
 	prod.publishToKafka(bodyBytes)
 
-	cid := req.Header.Get("Correlation")
+	cid := req.Header.Get(CORRELATION)
 
 	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
 	prod.correlationMap.Store(cid, c)
 
+	clean := func() {
+		close(c.resp)
+		prod.correlationMap.Delete(cid)
+	}
+
 	select {
 	case data := <-c.resp:
 		w.Write(data.Value)
-		close(c.resp)
+		clean()
 		break
 	case <-time.After(time.Second * 30):
 		io.WriteString(w, "timeout")
-		close(c.resp)
+		clean()
 	}
 
 }
