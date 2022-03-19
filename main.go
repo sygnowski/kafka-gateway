@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"s7i.io/kafka-gateway/internal/kafka"
@@ -12,11 +13,15 @@ import (
 func main() {
 
 	prod := kafka.KafkaProducer{}
-	prod.Init(&kafka.Properties{Server: "localhost:9092"})
+	prod.Init(&kafka.Properties{
+		Server:       os.Getenv("BROKER"),
+		PublishTopic: os.Getenv("PUBLISH_TOPIC"),
+	})
 
 	fmt.Println("running server")
 
 	http.HandleFunc("/hello", hndHello)
+	http.HandleFunc("/", prod.Publish)
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		panic(err)
 	}
