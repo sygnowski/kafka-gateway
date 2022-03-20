@@ -18,6 +18,7 @@ type Properties struct {
 	PublishTopic     string
 	SubscribeTopic   string
 	SubscribeGroupId string
+	Timeout          uint32
 }
 
 type Correlaction struct {
@@ -30,10 +31,13 @@ type KafkaIntegrator struct {
 	cons           *kafka.Consumer
 	cfg            *Properties
 	correlationMap sync.Map
+	timeout        time.Duration
 }
 
 func (this *KafkaIntegrator) Init(props *Properties) {
 	this.cfg = props
+	this.timeout = time.Duration(props.Timeout) * time.Second
+	fmt.Printf("Timeout :%s\n", this.timeout)
 
 	fmt.Println("making kafka producer")
 
@@ -120,43 +124,49 @@ func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 	}
 }
 
-func (prod *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
+func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
 
-	if req.Body != nil {
-		bodyBytes, err = io.ReadAll(req.Body)
-		if err != nil {
-			fmt.Printf("Body reading error: %v", err)
-			return
-		}
-		defer req.Body.Close()
-	}
-	prod.publishToKafka(bodyBytes)
-
 	cid := req.Header.Get(CORRELATION)
+	if cid == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "Missing the Correlation Header.")
+	} else {
 
-	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
-	prod.correlationMap.Store(cid, c)
+		if req.Body != nil {
+			bodyBytes, err = io.ReadAll(req.Body)
+			if err != nil {
+				fmt.Printf("Body reading error: %v", err)
+				return
+			}
+			defer req.Body.Close()
+		}
 
-	clean := func() {
-		close(c.resp)
-		prod.correlationMap.Delete(cid)
+		kint.publishToKafka(bodyBytes, cid)
+
+		c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
+		kint.correlationMap.Store(cid, c)
+
+		clean := func() {
+			close(c.resp)
+			kint.correlationMap.Delete(cid)
+		}
+
+		select {
+		case data := <-c.resp:
+			w.Write(data.Value)
+			clean()
+			break
+		case <-time.After(kint.timeout):
+			w.WriteHeader(http.StatusRequestTimeout)
+			io.WriteString(w, "Timeout")
+			clean()
+		}
 	}
-
-	select {
-	case data := <-c.resp:
-		w.Write(data.Value)
-		clean()
-		break
-	case <-time.After(time.Second * 30):
-		io.WriteString(w, "timeout")
-		clean()
-	}
-
 }
 
-func (prod *KafkaIntegrator) publishToKafka(data []byte) {
+func (prod *KafkaIntegrator) publishToKafka(data []byte, cid string) {
 	fmt.Println("Publishing to Kafka...")
 	fmt.Println(string(data))
 
@@ -166,7 +176,9 @@ func (prod *KafkaIntegrator) publishToKafka(data []byte) {
 		TopicPartition: kafka.TopicPartition{
 			Topic:     &prod.cfg.PublishTopic,
 			Partition: kafka.PartitionAny},
-		Value: data}
+		Value:   data,
+		Headers: []kafka.Header{kafka.Header{Key: CORRELATION, Value: []byte(cid)}},
+	}
 
 	prod.prod.Produce(msg, deliveryChan)
 
