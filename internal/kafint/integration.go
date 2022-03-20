@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"s7i.io/kafka-gateway/internal/util"
 )
 
 const CORRELATION = "Correlation"
@@ -130,40 +131,39 @@ func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 
 	cid := req.Header.Get(CORRELATION)
 	if cid == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "Missing the Correlation Header.")
-	} else {
-
-		if req.Body != nil {
-			bodyBytes, err = io.ReadAll(req.Body)
-			if err != nil {
-				fmt.Printf("Body reading error: %v", err)
-				return
-			}
-			defer req.Body.Close()
-		}
-
-		kint.publishToKafka(bodyBytes, cid)
-
-		c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
-		kint.correlationMap.Store(cid, c)
-
-		clean := func() {
-			close(c.resp)
-			kint.correlationMap.Delete(cid)
-		}
-
-		select {
-		case data := <-c.resp:
-			w.Write(data.Value)
-			clean()
-			break
-		case <-time.After(kint.timeout):
-			w.WriteHeader(http.StatusRequestTimeout)
-			io.WriteString(w, "Timeout")
-			clean()
-		}
+		cid = util.UUID()
 	}
+
+	if req.Body != nil {
+		bodyBytes, err = io.ReadAll(req.Body)
+		if err != nil {
+			fmt.Printf("Body reading error: %v", err)
+			return
+		}
+		defer req.Body.Close()
+	}
+
+	kint.publishToKafka(bodyBytes, cid)
+
+	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
+	kint.correlationMap.Store(cid, c)
+
+	clean := func() {
+		close(c.resp)
+		kint.correlationMap.Delete(cid)
+	}
+
+	select {
+	case data := <-c.resp:
+		w.Write(data.Value)
+		clean()
+		break
+	case <-time.After(kint.timeout):
+		w.WriteHeader(http.StatusRequestTimeout)
+		io.WriteString(w, "Timeout")
+		clean()
+	}
+
 }
 
 func (prod *KafkaIntegrator) publishToKafka(data []byte, cid string) {
