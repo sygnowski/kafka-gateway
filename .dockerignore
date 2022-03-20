@@ -1,5 +1,7 @@
 .dockerignore
 .git
+bin
+kafka-gateway
 *.md
 Dockerfile
 #entrypoint.sh
