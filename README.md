@@ -1,5 +1,13 @@
 # Kafka Http Gateway
 
+### Configuration
+
+Enviroment variables:
+ - `BROKER`=kafka:9093
+ - `PUBLISH_TOPIC`=gateway.publish
+ - `SUBSCRIBE_TOPIC`=gateway.subscribe
+ - `SUBSCRIBE_GROUP_ID`=gateway
+ - `TIMEOUT`=30
 
 ### Commands
 
