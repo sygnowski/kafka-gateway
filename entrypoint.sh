@@ -7,4 +7,6 @@ echo SUBSCRIBE_GROUP_ID: $SUBSCRIBE_GROUP_ID
 echo TIMEOUT: $TIMEOUT
 echo
 
-./bin/gateway
+ls -la /app
+
+/app/gateway
