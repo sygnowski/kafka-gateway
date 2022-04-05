@@ -14,8 +14,7 @@ import (
 func main() {
 	timeout, _ := strconv.ParseInt(os.Getenv("TIMEOUT"), 10, 32)
 
-	kint := kafint.KafkaIntegrator{}
-	kint.Init(&kafint.Properties{
+	kint := kafint.NewKafkaIntegrator(&kafint.Properties{
 		Server:           os.Getenv("BROKER"),
 		PublishTopic:     os.Getenv("PUBLISH_TOPIC"),
 		SubscribeTopic:   os.Getenv("SUBSCRIBE_TOPIC"),

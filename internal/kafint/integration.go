@@ -35,10 +35,16 @@ type KafkaIntegrator struct {
 	timeout        time.Duration
 }
 
-func (this *KafkaIntegrator) Init(props *Properties) {
-	this.cfg = props
-	this.timeout = time.Duration(props.Timeout) * time.Second
-	fmt.Printf("Timeout :%s\n", this.timeout)
+func NewKafkaIntegrator(props *Properties) *KafkaIntegrator {
+	kint := KafkaIntegrator{}
+	kint.init(props)
+	return &kint
+}
+
+func (ki *KafkaIntegrator) init(props *Properties) {
+	ki.cfg = props
+	ki.timeout = time.Duration(props.Timeout) * time.Second
+	fmt.Printf("Timeout :%s\n", ki.timeout)
 
 	fmt.Println("making kafka producer")
 
@@ -48,7 +54,7 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 
 		panic(err)
 	}
-	this.prod = p
+	ki.prod = p
 
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": props.Server,
@@ -58,15 +64,15 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 	if err != nil {
 		panic(err)
 	}
-	this.cons = c
+	ki.cons = c
 
-	this.correlationMap = sync.Map{}
+	ki.correlationMap = sync.Map{}
 
 	c.Subscribe(props.SubscribeTopic, nil)
-	go this.fetch()
+	go ki.fetch()
 }
 
-func (kint *KafkaIntegrator) fetch() {
+func (ki *KafkaIntegrator) fetch() {
 	run := true
 
 	for run {
@@ -75,7 +81,7 @@ func (kint *KafkaIntegrator) fetch() {
 		// 	fmt.Printf("Caught signal %v: terminating\n", sig)
 		// 	run = false
 		default:
-			ev := kint.cons.Poll(100)
+			ev := ki.cons.Poll(100)
 			if ev == nil {
 				continue
 			}
@@ -86,7 +92,7 @@ func (kint *KafkaIntegrator) fetch() {
 				if e.Headers != nil {
 					fmt.Printf("%% Headers: %v\n", e.Headers)
 				}
-				kint.onNewMessage(e)
+				ki.onNewMessage(e)
 			case kafka.Error:
 				// Errors should generally be considered
 				// informational, the client will try to
@@ -104,14 +110,14 @@ func (kint *KafkaIntegrator) fetch() {
 	}
 }
 
-func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
+func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 	if m.Headers != nil {
 		for _, h := range m.Headers {
 			if h.Key == CORRELATION {
 				cid := string(h.Value)
 				println("got cid: " + cid)
 
-				c, _ := kint.correlationMap.Load(cid)
+				c, _ := ki.correlationMap.Load(cid)
 				if c != nil {
 					corr := c.(*Correlaction)
 					corr.resp <- *m
@@ -125,7 +131,7 @@ func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 	}
 }
 
-func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
+func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
 
@@ -143,14 +149,14 @@ func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		defer req.Body.Close()
 	}
 
-	kint.publishToKafka(bodyBytes, cid)
+	ki.publishToKafka(bodyBytes, cid)
 
 	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
-	kint.correlationMap.Store(cid, c)
+	ki.correlationMap.Store(cid, c)
 
 	clean := func() {
 		close(c.resp)
-		kint.correlationMap.Delete(cid)
+		ki.correlationMap.Delete(cid)
 	}
 
 	select {
@@ -158,7 +164,7 @@ func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		w.Write(data.Value)
 		clean()
 		break
-	case <-time.After(kint.timeout):
+	case <-time.After(ki.timeout):
 		w.WriteHeader(http.StatusRequestTimeout)
 		io.WriteString(w, "Timeout")
 		clean()
@@ -166,7 +172,7 @@ func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 
 }
 
-func (prod *KafkaIntegrator) publishToKafka(data []byte, cid string) {
+func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
 	fmt.Println("Publishing to Kafka...")
 	fmt.Println(string(data))
 
@@ -174,13 +180,13 @@ func (prod *KafkaIntegrator) publishToKafka(data []byte, cid string) {
 
 	msg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
-			Topic:     &prod.cfg.PublishTopic,
+			Topic:     &ki.cfg.PublishTopic,
 			Partition: kafka.PartitionAny},
 		Value:   data,
 		Headers: []kafka.Header{kafka.Header{Key: CORRELATION, Value: []byte(cid)}},
 	}
 
-	prod.prod.Produce(msg, deliveryChan)
+	ki.prod.Produce(msg, deliveryChan)
 
 	e := <-deliveryChan
 	m := e.(*kafka.Message)
