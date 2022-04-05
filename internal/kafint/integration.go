@@ -16,6 +16,8 @@ import (
 const CORRELATION string = "correlation"
 const CONTEXT string = "context"
 
+var correlationPath = []string{CONTEXT, CORRELATION}
+
 type Properties struct {
 	Server           string
 	PublishTopic     string
@@ -127,11 +129,7 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 					return
 				}
 			}
-		} else {
-			println("message has no context")
 		}
-	} else {
-		panic(err)
 	}
 
 	if m.Headers != nil {
@@ -197,21 +195,23 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 
 func (ki *KafkaIntegrator) attachContext(input []byte, cid string) []byte {
 	var dat map[string]interface{}
-	var err error
 
-	if err = json.Unmarshal(input, &dat); err != nil {
-		panic(err)
+	if err := json.Unmarshal(input, &dat); err == nil {
+
+		if !util.MatchNestedMapPath(dat, correlationPath) {
+			context := make(map[string]interface{})
+			context[CORRELATION] = cid
+
+			dat[CONTEXT] = context
+
+			var enriched []byte
+			if enriched, err = json.Marshal(dat); err != nil {
+				panic(err)
+			}
+			return enriched
+		}
 	}
-	context := make(map[string]interface{})
-	context[CORRELATION] = cid
-
-	dat[CONTEXT] = context
-
-	var enriched []byte
-	if enriched, err = json.Marshal(dat); err != nil {
-		panic(err)
-	}
-	return enriched
+	return input
 }
 
 func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {

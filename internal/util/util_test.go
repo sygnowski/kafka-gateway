@@ -14,3 +14,65 @@ func TestUUID(t *testing.T) {
 	}
 
 }
+
+func TestMatchNestedMapPath(t *testing.T) {
+
+	nested := make(map[string]interface{})
+	mr1 := make(map[string]interface{})
+
+	mr1["row_0_1"] = "nothig else metters"
+	nested["row_0_0"] = mr1
+
+	if !MatchNestedMapPath(nested, []string{"row_0_0", "row_0_1"}) {
+		t.Errorf("shouldn't fail")
+	}
+
+	if MatchNestedMapPath(nested, []string{"row_0_2", "row_0_1"}) {
+		t.Errorf("should fail")
+	}
+}
+
+func TestGetMapPath(t *testing.T) {
+
+	nested := make(map[string]interface{})
+	mr1 := make(map[string]interface{})
+
+	mr1["row_0_1"] = "the one"
+	nested["row_0_0"] = mr1
+
+	if item := GetMapPath(nested, []string{"row_0_0", "row_0_1"}); item != "the one" {
+		t.Errorf("shouldn't fail")
+	}
+
+	if item := GetMapPath(nested, []string{"row_0_1", "row_0_1"}); item != nil {
+		t.Errorf("should fail")
+	}
+
+}
+
+func TestGetLastMapPath(t *testing.T) {
+
+	nested := make(map[string]interface{})
+	mr1 := make(map[string]interface{})
+	mr2 := make(map[string]interface{})
+
+	mr2["row_2_0"] = "second"
+
+	mr1["row_1_0"] = "the one"
+	mr1["row_1_1"] = mr2
+
+	nested["row_0_0"] = mr1
+
+	full, item := GetLastMapPath(nested, []string{"row_0_0", "row_1_0"})
+	if item != "the one" && !full {
+		t.Errorf("shouldn't fail")
+	}
+
+	full, last := GetLastMapPath(nested, []string{"row_0_0", "row_1_1", "row_2_1"})
+
+	m, isMap := last.(map[string]interface{})
+
+	if full && isMap && m["row_2_0"] == "second" {
+		t.Errorf("should fail")
+	}
+}
