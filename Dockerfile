@@ -1,4 +1,4 @@
-FROM golang:latest as stack
+FROM golang:1.17.11-bullseye as stack
 
 RUN set -ex; \
   mkdir /opt/kafka-gateway; \
