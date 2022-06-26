@@ -23,6 +23,9 @@ main () {
         win)
             buildWindwsBins
             ;;
+        test)
+            runTest
+            ;;
         *)
         badOpt $@
     esac
@@ -61,6 +64,10 @@ dockerBuild() {
 
 buildWindwsBins() {
     GOOS=windows GOARCH=amd64 go build -o bin/gateway-amd64.exe
+}
+
+runTest() {
+    go test -v -timeout 30s s7i.io/kafka-gateway/internal/kafint s7i.io/kafka-gateway/internal/util
 }
 
 main $@

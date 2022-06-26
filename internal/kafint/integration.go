@@ -1,6 +1,7 @@
 package kafint
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,10 @@ import (
 	"s7i.io/kafka-gateway/internal/util"
 )
 
-const CORRELATION = "Correlation"
+const CORRELATION string = "correlation"
+const CONTEXT string = "context"
+
+var correlationPath = []string{CONTEXT, CORRELATION}
 
 type Properties struct {
 	Server           string
@@ -111,6 +115,23 @@ func (ki *KafkaIntegrator) fetch() {
 }
 
 func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
+	resp := make(map[string]interface{})
+
+	if err := json.Unmarshal(m.Value, &resp); err == nil {
+		if c := resp[CONTEXT]; c != nil {
+			ctx := c.(map[string]interface{})
+
+			if cid := ctx[CORRELATION]; cid != nil {
+				if c, _ := ki.correlationMap.Load(cid); c != nil {
+					println("got cid in the body.context.correlation: " + cid.(string))
+					corr := c.(*Correlaction)
+					corr.resp <- *m
+					return
+				}
+			}
+		}
+	}
+
 	if m.Headers != nil {
 		for _, h := range m.Headers {
 			if h.Key == CORRELATION {
@@ -148,7 +169,7 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		}
 		defer req.Body.Close()
 	}
-
+	bodyBytes = ki.attachContext(bodyBytes, cid)
 	ki.publishToKafka(bodyBytes, cid)
 
 	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
@@ -170,6 +191,27 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		clean()
 	}
 
+}
+
+func (ki *KafkaIntegrator) attachContext(input []byte, cid string) []byte {
+	var dat map[string]interface{}
+
+	if err := json.Unmarshal(input, &dat); err == nil {
+
+		if !util.MatchNestedMapPath(dat, correlationPath) {
+			context := make(map[string]interface{})
+			context[CORRELATION] = cid
+
+			dat[CONTEXT] = context
+
+			var enriched []byte
+			if enriched, err = json.Marshal(dat); err != nil {
+				panic(err)
+			}
+			return enriched
+		}
+	}
+	return input
 }
 
 func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
