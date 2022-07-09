@@ -10,7 +10,7 @@ func Test_attachContext(t *testing.T) {
 
 	ki := KafkaIntegrator{}
 	t.Logf("input %s", input)
-	res := ki.attachContext([]byte(input), "321")
+	_, res := ki.attachContext([]byte(input), "321")
 
 	dat := make(map[string]interface{})
 
@@ -50,7 +50,7 @@ func TestContextWithCorrelation(t *testing.T) {
 	}
 
 	ki := KafkaIntegrator{}
-	res := ki.attachContext(b, "321")
+	_, res := ki.attachContext(b, "321")
 	output := string(res)
 
 	t.Logf("output %s, len: %d", output, len(output))

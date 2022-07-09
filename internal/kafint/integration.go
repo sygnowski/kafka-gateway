@@ -155,6 +155,7 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
+	var ctxAtt bool
 
 	cid := req.Header.Get(CORRELATION)
 	if cid == "" {
@@ -169,7 +170,10 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		}
 		defer req.Body.Close()
 	}
-	bodyBytes = ki.attachContext(bodyBytes, cid)
+	ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
+	if ctxAtt {
+		fmt.Printf("[KI] New context attached [%s].\n")
+	}
 	ki.publishToKafka(bodyBytes, cid)
 
 	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
@@ -193,14 +197,16 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 
 }
 
-func (ki *KafkaIntegrator) attachContext(input []byte, cid string) []byte {
+func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached bool, result []byte) {
 	var dat map[string]interface{}
+	attached = false
 
 	if err := json.Unmarshal(input, &dat); err == nil {
 
 		if !util.MatchNestedMapPath(dat, correlationPath) {
 			context := make(map[string]interface{})
 			context[CORRELATION] = cid
+			attached = true
 
 			dat[CONTEXT] = context
 
@@ -208,10 +214,12 @@ func (ki *KafkaIntegrator) attachContext(input []byte, cid string) []byte {
 			if enriched, err = json.Marshal(dat); err != nil {
 				panic(err)
 			}
-			return enriched
+			result = enriched
+			return
 		}
 	}
-	return input
+	result = input
+	return
 }
 
 func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
