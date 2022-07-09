@@ -29,3 +29,33 @@ func Test_attachContext(t *testing.T) {
 	}
 
 }
+
+func TestContextWithCorrelation(t *testing.T) {
+	input := `
+{
+    "id": "A",
+    "add": "B",
+    "context": {
+         "correlation": "dfb98431-c64b-0062-effa-9f16f52e5e31"
+    }
+}
+`
+
+	b := []byte(input)
+
+	dat := make(map[string]interface{})
+
+	if err := json.Unmarshal(b, &dat); err != nil {
+		t.Errorf("on test error: %s", err)
+	}
+
+	ki := KafkaIntegrator{}
+	res := ki.attachContext(b, "321")
+	output := string(res)
+
+	t.Logf("output %s, len: %d", output, len(output))
+
+	if input != output {
+		t.Errorf("not the same")
+	}
+}

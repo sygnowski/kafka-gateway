@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"regexp"
 	"testing"
 )
@@ -75,4 +76,29 @@ func TestGetLastMapPath(t *testing.T) {
 	if full && isMap && m["row_2_0"] == "second" {
 		t.Errorf("should fail")
 	}
+}
+
+func TestContextWithCorrelation(t *testing.T) {
+	rawJson := `
+{
+    "id": "A",
+    "add": "B",
+    "context": {
+         "correlation": "dfb98431-c64b-0062-effa-9f16f52e5e31"
+    }
+}
+`
+
+	b := []byte(rawJson)
+
+	dat := make(map[string]interface{})
+
+	if err := json.Unmarshal(b, &dat); err != nil {
+		t.Errorf("on test error: %s", err)
+	}
+
+	if !MatchNestedMapPath(dat, []string{"context", "correlation"}) {
+		t.Errorf("correlation exists")
+	}
+
 }
