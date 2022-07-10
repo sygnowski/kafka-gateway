@@ -97,9 +97,9 @@ func (ki *KafkaIntegrator) fetch() {
 			case kafka.Error:
 				fmt.Fprintf(os.Stderr, "[KAFKA ERROR] %v: %v\n", e.Code(), e)
 				if e.Code() == kafka.ErrAllBrokersDown {
-					waitTime := time.Duration(10).Seconds()
+					waitTime := 10 * time.Second
 					fmt.Fprintf(os.Stderr, "[KAFKA] Waiting for broker... %s\n", waitTime)
-					time.Sleep(time.Duration(waitTime))
+					time.Sleep(waitTime)
 				}
 			default:
 				fmt.Printf("[KAFKA IGNORED EVENT] %v\n", e)
@@ -194,25 +194,40 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached bool, result []byte) {
 	var dat map[string]interface{}
 	attached = false
+	result = input
 
 	if err := json.Unmarshal(input, &dat); err == nil {
 
-		if !util.MatchNestedMapPath(dat, correlationPath) {
+		hasContextWithCorrelation := util.MatchNestedMapPath(dat, correlationPath)
+		hasContex := util.MatchNestedMapPath(dat, []string{CONTEXT})
+
+		switch {
+		case hasContextWithCorrelation:
+			return
+		case hasContex:
+			context := dat[CONTEXT].(map[string]interface{})
+			context[CORRELATION] = cid
+			attached = true
+			break
+		case !hasContextWithCorrelation:
 			context := make(map[string]interface{})
 			context[CORRELATION] = cid
 			attached = true
 
 			dat[CONTEXT] = context
-
-			var enriched []byte
-			if enriched, err = json.Marshal(dat); err != nil {
-				panic(err)
-			}
-			result = enriched
+			break
+		default:
 			return
+
 		}
+
+		var enriched []byte
+		if enriched, err = json.Marshal(dat); err != nil {
+			panic(err)
+		}
+		result = enriched
 	}
-	result = input
+
 	return
 }
 

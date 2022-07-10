@@ -3,6 +3,8 @@ package kafint
 import (
 	"encoding/json"
 	"testing"
+
+	"s7i.io/kafka-gateway/internal/util"
 )
 
 func Test_attachContext(t *testing.T) {
@@ -58,4 +60,58 @@ func TestContextWithCorrelation(t *testing.T) {
 	if input != output {
 		t.Errorf("not the same")
 	}
+}
+
+func TestHasContextButWithoutCorrelation(t *testing.T) {
+	input := `
+{
+    "id": "A",
+    "add": "B",
+    "context": {
+         "some" :"someValue"
+    }
+}
+`
+
+	t.Logf("[before] output %s, len: %d", input, len(input))
+
+	b := []byte(input)
+	before := jsonAsMap(b, t)
+
+	if !util.MatchNestedMapPath(before, []string{"context"}) {
+		t.Errorf("[before][missing] root.context")
+	}
+	if !util.MatchNestedMapPath(before, []string{"context", "some"}) {
+		t.Errorf("[before][missing] root.context.some")
+	}
+	if util.MatchNestedMapPath(before, []string{"context", "correlation"}) {
+		t.Errorf("[before][has] root.context.correlation")
+	}
+
+	ki := KafkaIntegrator{}
+	attached, res := ki.attachContext(b, "321")
+	output := string(res)
+	after := jsonAsMap(res, t)
+
+	if !attached {
+		t.Fail()
+	}
+
+	t.Logf("[after] output %s, len: %d", output, len(output))
+
+	if !util.MatchNestedMapPath(after, []string{"context", "correlation"}) {
+		t.Errorf("[after][missing] root.context.correlation")
+	}
+	if !util.MatchNestedMapPath(after, []string{"context", "some"}) {
+		t.Errorf("[after][missing] root.context.some")
+	}
+}
+
+func jsonAsMap(buff []byte, t *testing.T) map[string]interface{} {
+	dat := make(map[string]interface{})
+
+	if err := json.Unmarshal(buff, &dat); err != nil {
+		t.Errorf("[json-parsing]: %s", err)
+	}
+	return dat
 }
