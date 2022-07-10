@@ -59,7 +59,11 @@ dockerRun() {
 }
 
 dockerBuild() {
-    docker build -t $DOCKER_IMAGE .
+    local VCS_REF=$(git_ref)
+
+    echo "[Docker Build] tag: $DOCKER_IMAGE, git-ref: $VCS_REF"
+
+    docker build -t $DOCKER_IMAGE --build-arg BUILD_DATE="$(date +"%Y-%m-%dT%H:%M:%S%z")" --build-arg VCS="$VCS_REF" .
 }
 
 buildWindwsBins() {
@@ -68,6 +72,10 @@ buildWindwsBins() {
 
 runTest() {
     go test -v -timeout 30s s7i.io/kafka-gateway/internal/kafint s7i.io/kafka-gateway/internal/util
+}
+
+git_ref() {
+    echo "$(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse HEAD)"
 }
 
 main $@

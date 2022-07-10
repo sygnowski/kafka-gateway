@@ -4,6 +4,8 @@ bin
 kafka-gateway
 *.md
 Dockerfile
-#entrypoint.sh
 dev.sh
 *.http
+*.json
+*.kafka
+*.yaml
