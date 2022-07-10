@@ -16,7 +16,9 @@ import (
 const CORRELATION string = "correlation"
 const CONTEXT string = "context"
 
-var correlationPath = []string{CONTEXT, CORRELATION}
+func CorrelationPath() []string {
+	return []string{CONTEXT, CORRELATION}
+}
 
 type Properties struct {
 	Server           string
@@ -149,12 +151,8 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
-	var ctxAtt bool
-
-	cid := req.Header.Get(CORRELATION)
-	if cid == "" {
-		cid = util.UUID()
-	}
+	var ctxAtt, cidExists bool
+	var cid string
 
 	if req.Body != nil {
 		bodyBytes, err = io.ReadAll(req.Body)
@@ -164,9 +162,13 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		}
 		defer req.Body.Close()
 	}
-	ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
-	if ctxAtt {
-		fmt.Printf("[KI] New context attached [%s].\n", cid)
+
+	if cidExists, cid = correlationInBody(bodyBytes); !cidExists && cid == "" {
+		cid = util.UUID()
+		ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
+		if ctxAtt {
+			fmt.Printf("[KI] New context attached [%s].\n", cid)
+		}
 	}
 	ki.publishToKafka(bodyBytes, cid)
 
@@ -198,7 +200,7 @@ func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached boo
 
 	if err := json.Unmarshal(input, &dat); err == nil {
 
-		hasContextWithCorrelation := util.MatchNestedMapPath(dat, correlationPath)
+		hasContextWithCorrelation := util.MatchNestedMapPath(dat, CorrelationPath())
 		hasContex := util.MatchNestedMapPath(dat, []string{CONTEXT})
 
 		switch {
@@ -232,8 +234,7 @@ func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached boo
 }
 
 func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
-	fmt.Println("Publishing to Kafka...")
-	fmt.Println(string(data))
+	fmt.Printf("[KI] Publishing: [%s], correlation[%s]\n", string(data), cid)
 
 	deliveryChan := make(chan kafka.Event)
 
@@ -277,4 +278,22 @@ func onMessage(m *kafka.Message) {
 		fmt.Printf("[KAFKA] Delivered message to topic %s [%d] at offset %v\n",
 			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 	}
+}
+
+func correlationInBody(body []byte) (bool, string) {
+	jsonMap := make(map[string]interface{})
+
+	if err := json.Unmarshal(body, &jsonMap); err == nil {
+		full, ctx := util.GetLastMapPath(jsonMap, CorrelationPath())
+
+		if full {
+			cid := ctx.(string)
+			fmt.Printf("[KI] Extracted CID [%s], full-path [%v].\n", cid, full)
+			return true, cid
+		}
+
+	} else {
+		panic(err)
+	}
+	return false, ""
 }

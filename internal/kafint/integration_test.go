@@ -51,6 +51,10 @@ func TestContextWithCorrelation(t *testing.T) {
 		t.Errorf("on test error: %s", err)
 	}
 
+	if hasCid, cid := correlationInBody(b); !hasCid {
+		t.Errorf("cid %s", cid)
+	}
+
 	ki := KafkaIntegrator{}
 	_, res := ki.attachContext(b, "321")
 	output := string(res)
