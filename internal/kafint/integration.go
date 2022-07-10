@@ -81,9 +81,6 @@ func (ki *KafkaIntegrator) fetch() {
 
 	for run {
 		select {
-		// case sig := <-sigchan:
-		// 	fmt.Printf("Caught signal %v: terminating\n", sig)
-		// 	run = false
 		default:
 			ev := ki.cons.Poll(100)
 			if ev == nil {
@@ -92,23 +89,20 @@ func (ki *KafkaIntegrator) fetch() {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				fmt.Printf("%% Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
+				fmt.Printf("[KAFKA] Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
 				if e.Headers != nil {
-					fmt.Printf("%% Headers: %v\n", e.Headers)
+					fmt.Printf("[KAFKA] Headers: %v\n", e.Headers)
 				}
 				ki.onNewMessage(e)
 			case kafka.Error:
-				// Errors should generally be considered
-				// informational, the client will try to
-				// automatically recover.
-				// But in this example we choose to terminate
-				// the application if all brokers are down.
-				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
+				fmt.Fprintf(os.Stderr, "[KAFKA ERROR] %v: %v\n", e.Code(), e)
 				if e.Code() == kafka.ErrAllBrokersDown {
-					run = false
+					waitTime := time.Duration(10).Seconds()
+					fmt.Fprintf(os.Stderr, "[KAFKA] Waiting for broker... %s\n", waitTime)
+					time.Sleep(time.Duration(waitTime))
 				}
 			default:
-				fmt.Printf("Ignored %v\n", e)
+				fmt.Printf("[KAFKA IGNORED EVENT] %v\n", e)
 			}
 		}
 	}
@@ -172,7 +166,7 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	}
 	ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
 	if ctxAtt {
-		fmt.Printf("[KI] New context attached [%s].\n")
+		fmt.Printf("[KI] New context attached [%s].\n", cid)
 	}
 	ki.publishToKafka(bodyBytes, cid)
 
@@ -263,9 +257,9 @@ func handleEvents(events chan kafka.Event) {
 func onMessage(m *kafka.Message) {
 	fmt.Println(m)
 	if m.TopicPartition.Error != nil {
-		fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+		fmt.Printf("[KAFKA] Delivery failed: %v\n", m.TopicPartition.Error)
 	} else {
-		fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
+		fmt.Printf("[KAFKA] Delivered message to topic %s [%d] at offset %v\n",
 			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 	}
 }
