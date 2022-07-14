@@ -1,6 +1,7 @@
 package kafint
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,9 +10,15 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"s7i.io/kafka-gateway/internal/util"
 )
 
-const CORRELATION = "Correlation"
+const CORRELATION string = "correlation"
+const CONTEXT string = "context"
+
+func CorrelationPath() []string {
+	return []string{CONTEXT, CORRELATION}
+}
 
 type Properties struct {
 	Server           string
@@ -34,10 +41,16 @@ type KafkaIntegrator struct {
 	timeout        time.Duration
 }
 
-func (this *KafkaIntegrator) Init(props *Properties) {
-	this.cfg = props
-	this.timeout = time.Duration(props.Timeout) * time.Second
-	fmt.Printf("Timeout :%s\n", this.timeout)
+func NewKafkaIntegrator(props *Properties) *KafkaIntegrator {
+	kint := KafkaIntegrator{}
+	kint.init(props)
+	return &kint
+}
+
+func (ki *KafkaIntegrator) init(props *Properties) {
+	ki.cfg = props
+	ki.timeout = time.Duration(props.Timeout) * time.Second
+	fmt.Printf("Timeout :%s\n", ki.timeout)
 
 	fmt.Println("making kafka producer")
 
@@ -47,7 +60,7 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 
 		panic(err)
 	}
-	this.prod = p
+	ki.prod = p
 
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": props.Server,
@@ -57,60 +70,71 @@ func (this *KafkaIntegrator) Init(props *Properties) {
 	if err != nil {
 		panic(err)
 	}
-	this.cons = c
+	ki.cons = c
 
-	this.correlationMap = sync.Map{}
+	ki.correlationMap = sync.Map{}
 
 	c.Subscribe(props.SubscribeTopic, nil)
-	go this.fetch()
+	go ki.fetch()
 }
 
-func (kint *KafkaIntegrator) fetch() {
+func (ki *KafkaIntegrator) fetch() {
 	run := true
 
 	for run {
 		select {
-		// case sig := <-sigchan:
-		// 	fmt.Printf("Caught signal %v: terminating\n", sig)
-		// 	run = false
 		default:
-			ev := kint.cons.Poll(100)
+			ev := ki.cons.Poll(100)
 			if ev == nil {
 				continue
 			}
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				fmt.Printf("%% Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
+				fmt.Printf("[KAFKA] Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
 				if e.Headers != nil {
-					fmt.Printf("%% Headers: %v\n", e.Headers)
+					fmt.Printf("[KAFKA] Headers: %v\n", e.Headers)
 				}
-				kint.onNewMessage(e)
+				ki.onNewMessage(e)
 			case kafka.Error:
-				// Errors should generally be considered
-				// informational, the client will try to
-				// automatically recover.
-				// But in this example we choose to terminate
-				// the application if all brokers are down.
-				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
+				fmt.Fprintf(os.Stderr, "[KAFKA ERROR] %v: %v\n", e.Code(), e)
 				if e.Code() == kafka.ErrAllBrokersDown {
-					run = false
+					waitTime := 10 * time.Second
+					fmt.Fprintf(os.Stderr, "[KAFKA] Waiting for broker... %s\n", waitTime)
+					time.Sleep(waitTime)
 				}
 			default:
-				fmt.Printf("Ignored %v\n", e)
+				fmt.Printf("[KAFKA IGNORED EVENT] %v\n", e)
 			}
 		}
 	}
 }
 
-func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
+func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
+	resp := make(map[string]interface{})
+
+	if err := json.Unmarshal(m.Value, &resp); err == nil {
+		if c := resp[CONTEXT]; c != nil {
+			ctx := c.(map[string]interface{})
+
+			if cid := ctx[CORRELATION]; cid != nil {
+				if c, _ := ki.correlationMap.Load(cid); c != nil {
+					println("[KI] got cid in the body.context.correlation: " + cid.(string))
+					corr := c.(*Correlaction)
+					corr.resp <- *m
+					return
+				}
+			}
+		}
+	}
+
 	if m.Headers != nil {
 		for _, h := range m.Headers {
 			if h.Key == CORRELATION {
 				cid := string(h.Value)
-				println("got cid: " + cid)
+				println("[KI] got cid in the header: " + cid)
 
-				c, _ := kint.correlationMap.Load(cid)
+				c, _ := ki.correlationMap.Load(cid)
 				if c != nil {
 					corr := c.(*Correlaction)
 					corr.resp <- *m
@@ -124,63 +148,107 @@ func (kint *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 	}
 }
 
-func (kint *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
+func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	var bodyBytes []byte
 	var err error
+	var ctxAtt, cidExists bool
+	var cid string
 
-	cid := req.Header.Get(CORRELATION)
-	if cid == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "Missing the Correlation Header.")
-	} else {
-
-		if req.Body != nil {
-			bodyBytes, err = io.ReadAll(req.Body)
-			if err != nil {
-				fmt.Printf("Body reading error: %v", err)
-				return
-			}
-			defer req.Body.Close()
+	if req.Body != nil {
+		bodyBytes, err = io.ReadAll(req.Body)
+		if err != nil {
+			fmt.Printf("Body reading error: %v", err)
+			return
 		}
+		defer req.Body.Close()
+	}
 
-		kint.publishToKafka(bodyBytes, cid)
-
-		c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
-		kint.correlationMap.Store(cid, c)
-
-		clean := func() {
-			close(c.resp)
-			kint.correlationMap.Delete(cid)
+	if cidExists, cid = correlationInBody(bodyBytes); !cidExists && cid == "" {
+		cid = util.UUID()
+		ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
+		if ctxAtt {
+			fmt.Printf("[KI] New context attached [%s].\n", cid)
 		}
+	}
+	ki.publishToKafka(bodyBytes, cid)
 
-		select {
-		case data := <-c.resp:
-			w.Write(data.Value)
-			clean()
-			break
-		case <-time.After(kint.timeout):
-			w.WriteHeader(http.StatusRequestTimeout)
-			io.WriteString(w, "Timeout")
-			clean()
-		}
+	c := &Correlaction{id: cid, resp: make(chan kafka.Message, 1)}
+	ki.correlationMap.Store(cid, c)
+
+	clean := func() {
+		close(c.resp)
+		ki.correlationMap.Delete(cid)
+	}
+	defer clean()
+
+	select {
+	case data := <-c.resp:
+		w.Write(data.Value)
+		break
+	case <-time.After(ki.timeout):
+		statusGatewayTimeout(w)
 	}
 }
 
-func (prod *KafkaIntegrator) publishToKafka(data []byte, cid string) {
-	fmt.Println("Publishing to Kafka...")
-	fmt.Println(string(data))
+func statusGatewayTimeout(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusGatewayTimeout)
+	io.WriteString(w, "Gatewat Timeout.")
+}
+
+func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached bool, result []byte) {
+	var dat map[string]interface{}
+	attached = false
+	result = input
+
+	if err := json.Unmarshal(input, &dat); err == nil {
+
+		hasContextWithCorrelation := util.MatchNestedMapPath(dat, CorrelationPath())
+		hasContex := util.MatchNestedMapPath(dat, []string{CONTEXT})
+
+		switch {
+		case hasContextWithCorrelation:
+			return
+		case hasContex:
+			context := dat[CONTEXT].(map[string]interface{})
+			context[CORRELATION] = cid
+			attached = true
+			break
+		case !hasContextWithCorrelation:
+			context := make(map[string]interface{})
+			context[CORRELATION] = cid
+			attached = true
+
+			dat[CONTEXT] = context
+			break
+		default:
+			return
+
+		}
+
+		var enriched []byte
+		if enriched, err = json.Marshal(dat); err != nil {
+			panic(err)
+		}
+		result = enriched
+	}
+
+	return
+}
+
+func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
+	fmt.Printf("[KI] Publishing: [%s], correlation[%s]\n", string(data), cid)
 
 	deliveryChan := make(chan kafka.Event)
 
 	msg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
-			Topic:     &prod.cfg.PublishTopic,
+			Topic:     &ki.cfg.PublishTopic,
 			Partition: kafka.PartitionAny},
 		Value:   data,
 		Headers: []kafka.Header{kafka.Header{Key: CORRELATION, Value: []byte(cid)}},
 	}
 
-	prod.prod.Produce(msg, deliveryChan)
+	ki.prod.Produce(msg, deliveryChan)
 
 	e := <-deliveryChan
 	m := e.(*kafka.Message)
@@ -207,9 +275,27 @@ func handleEvents(events chan kafka.Event) {
 func onMessage(m *kafka.Message) {
 	fmt.Println(m)
 	if m.TopicPartition.Error != nil {
-		fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+		fmt.Printf("[KAFKA] Delivery failed: %v\n", m.TopicPartition.Error)
 	} else {
-		fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
+		fmt.Printf("[KAFKA] Delivered message to topic %s [%d] at offset %v\n",
 			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 	}
+}
+
+func correlationInBody(body []byte) (bool, string) {
+	jsonMap := make(map[string]interface{})
+
+	if err := json.Unmarshal(body, &jsonMap); err == nil {
+		full, ctx := util.GetLastMapPath(jsonMap, CorrelationPath())
+
+		if full {
+			cid := ctx.(string)
+			fmt.Printf("[KI] Extracted CID [%s], full-path [%v].\n", cid, full)
+			return true, cid
+		}
+
+	} else {
+		panic(err)
+	}
+	return false, ""
 }
