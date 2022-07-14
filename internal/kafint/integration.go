@@ -119,7 +119,7 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 
 			if cid := ctx[CORRELATION]; cid != nil {
 				if c, _ := ki.correlationMap.Load(cid); c != nil {
-					println("got cid in the body.context.correlation: " + cid.(string))
+					println("[KI] got cid in the body.context.correlation: " + cid.(string))
 					corr := c.(*Correlaction)
 					corr.resp <- *m
 					return
@@ -132,7 +132,7 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 		for _, h := range m.Headers {
 			if h.Key == CORRELATION {
 				cid := string(h.Value)
-				println("got cid: " + cid)
+				println("[KI] got cid in the header: " + cid)
 
 				c, _ := ki.correlationMap.Load(cid)
 				if c != nil {
@@ -179,18 +179,20 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		close(c.resp)
 		ki.correlationMap.Delete(cid)
 	}
+	defer clean()
 
 	select {
 	case data := <-c.resp:
 		w.Write(data.Value)
-		clean()
 		break
 	case <-time.After(ki.timeout):
-		w.WriteHeader(http.StatusRequestTimeout)
-		io.WriteString(w, "Timeout")
-		clean()
+		statusGatewayTimeout(w)
 	}
+}
 
+func statusGatewayTimeout(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusGatewayTimeout)
+	io.WriteString(w, "Gatewat Timeout.")
 }
 
 func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached bool, result []byte) {
