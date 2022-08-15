@@ -1,0 +1,18 @@
+[Unit]
+Description=Http Kafka Gateway Service
+After=network.target
+
+[Service]
+User=nefro
+Group=nefro
+Type=simple
+Environment=BROKER="localhost:9092"
+Environment=PUBLISH_TOPIC="TodoAction"
+Environment=SUBSCRIBE_TOPIC="TodoReaction"
+Environment=SUBSCRIBE_GROUP_ID="todo-gateway"
+Environment=TIMEOUT=60
+
+ExecStart=/home/nefro/codebase/kafka-gateway/kafka-gateway
+
+[Install]
+WantedBy=multi-user.target
