@@ -23,6 +23,7 @@ ENV PATH=$PATH:$DEV/bin
 ENV BUILD_GIT_REF=${VCS}
 ENV BUILD_DATE=${BUILD_DATE}
 
-LABEL build.git.ref=${VCS} build.date=${BUILD_DATE}
+LABEL build.git.ref=${VCS} build.date=${BUILD_DATE} \
+  org.opencontainers.image.source="https://github.com/sygnowski/kafka-gateway"
 
 ENTRYPOINT ["sh", "/opt/kafka-gateway/entrypoint.sh"]
