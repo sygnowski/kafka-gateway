@@ -1,3 +1,5 @@
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/sygnowski/kafka-gateway.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sygnowski/kafka-gateway/alerts/)
+
 # Kafka Http Gateway
 
 ### Configuration
