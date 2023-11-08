@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"s7i.io/kafka-gateway/internal/config"
 	"s7i.io/kafka-gateway/internal/util"
 )
 
@@ -36,25 +37,31 @@ type Correlaction struct {
 type KafkaIntegrator struct {
 	prod           *kafka.Producer
 	cons           *kafka.Consumer
-	cfg            *Properties
+	cfg            *config.Cfg
 	correlationMap sync.Map
 	timeout        time.Duration
 }
 
-func NewKafkaIntegrator(props *Properties) *KafkaIntegrator {
+func NewKafkaIntegrator(config *config.Cfg) *KafkaIntegrator {
 	kint := KafkaIntegrator{}
-	kint.init(props)
+	kint.init(config)
 	return &kint
 }
 
-func (ki *KafkaIntegrator) init(props *Properties) {
-	ki.cfg = props
-	ki.timeout = time.Duration(props.Timeout) * time.Second
+func (ki *KafkaIntegrator) init(config *config.Cfg) {
+	ki.cfg = config
+	ki.timeout = time.Duration(config.App.Timeout) * time.Second
 	fmt.Printf("Timeout :%s\n", ki.timeout)
+
+	prodProps := &kafka.ConfigMap{}
+	append(&config.Pub, prodProps)
+
+	consProps := &kafka.ConfigMap{}
+	append(&config.Sub, consProps)
 
 	fmt.Println("making kafka producer")
 
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": props.Server})
+	p, err := kafka.NewProducer(prodProps)
 
 	if err != nil {
 
@@ -62,11 +69,7 @@ func (ki *KafkaIntegrator) init(props *Properties) {
 	}
 	ki.prod = p
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": props.Server,
-		"group.id":          props.SubscribeGroupId,
-		"auto.offset.reset": "latest",
-	})
+	c, err := kafka.NewConsumer(consProps)
 	if err != nil {
 		panic(err)
 	}
@@ -74,8 +77,14 @@ func (ki *KafkaIntegrator) init(props *Properties) {
 
 	ki.correlationMap = sync.Map{}
 
-	c.Subscribe(props.SubscribeTopic, nil)
+	c.Subscribe(config.Sub.Topic, nil)
 	go ki.fetch()
+}
+
+func append(spec *config.CfgSpec, configMap *kafka.ConfigMap) {
+	for _, p := range spec.Properties {
+		configMap.Set(p)
+	}
 }
 
 func (ki *KafkaIntegrator) fetch() {
@@ -242,7 +251,7 @@ func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
 
 	msg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
-			Topic:     &ki.cfg.PublishTopic,
+			Topic:     &ki.cfg.Pub.Topic,
 			Partition: kafka.PartitionAny},
 		Value:   data,
 		Headers: []kafka.Header{kafka.Header{Key: CORRELATION, Value: []byte(cid)}},

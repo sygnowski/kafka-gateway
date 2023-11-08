@@ -4,29 +4,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
+	"s7i.io/kafka-gateway/internal/config"
 	"s7i.io/kafka-gateway/internal/kafint"
 )
 
 func main() {
-	timeout, _ := strconv.ParseInt(os.Getenv("TIMEOUT"), 10, 32)
 
-	kint := kafint.NewKafkaIntegrator(&kafint.Properties{
-		Server:           os.Getenv("BROKER"),
-		PublishTopic:     os.Getenv("PUBLISH_TOPIC"),
-		SubscribeTopic:   os.Getenv("SUBSCRIBE_TOPIC"),
-		SubscribeGroupId: os.Getenv("SUBSCRIBE_GROUP_ID"),
-		Timeout:          uint32(timeout),
-	})
+	conf := config.ReadConfig()
+	kint := kafint.NewKafkaIntegrator(conf)
 
 	fmt.Println("running server")
 
 	http.HandleFunc("/hello", hndHello)
-	http.HandleFunc("/", kint.Publish)
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	http.HandleFunc(conf.App.Context, kint.Publish)
+
+	bind := fmt.Sprintf("0.0.0.0:%s", strconv.Itoa(conf.App.Port))
+
+	if err := http.ListenAndServe(bind, nil); err != nil {
 		panic(err)
 	}
 
