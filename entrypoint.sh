@@ -3,17 +3,21 @@
 #set -ex
 
 function info() {
-    echo Gateway Entrypoint
-    echo
-    echo BROKER: $BROKER
-    echo PUBLISH_TOPIC: $PUBLISH_TOPIC
-    echo SUBSCRIBE_TOPIC: $SUBSCRIBE_TOPIC
-    echo SUBSCRIBE_GROUP_ID: $SUBSCRIBE_GROUP_ID
-    echo TIMEOUT: $TIMEOUT
-    echo
-    echo BUILD_GIT_REF: $BUILD_GIT_REF
-    echo BUILD_DATE: $BUILD_DATE
-    echo
+    cat <<EOF
+Gateway Entrypoint
+
+BROKER: $BROKER
+PUBLISH_TOPIC: $PUBLISH_TOPIC
+SUBSCRIBE_TOPIC: $SUBSCRIBE_TOPIC
+SUBSCRIBE_GROUP_ID: $SUBSCRIBE_GROUP_ID
+TIMEOUT: $TIMEOUT
+
+BUILD_GIT_REF: $BUILD_GIT_REF
+BUILD_DATE: $BUILD_DATE
+
+YAML_CONFIG: $APP_CONFIG
+EOF
+
 }
 
 function asYaml() {
@@ -38,8 +42,7 @@ sub:
 EOF
 }
 
+export APP_CONFIG=${APP_CONFIG:-$(asYaml)}
 info
-
-export APP_CONFIG=$(asYaml)
 
 exec gateway
