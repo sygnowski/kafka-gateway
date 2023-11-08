@@ -2,10 +2,9 @@ package kafint
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -51,7 +50,7 @@ func NewKafkaIntegrator(config *config.Cfg) *KafkaIntegrator {
 func (ki *KafkaIntegrator) init(config *config.Cfg) {
 	ki.cfg = config
 	ki.timeout = time.Duration(config.App.Timeout) * time.Second
-	fmt.Printf("Timeout :%s\n", ki.timeout)
+	log.Printf("Timeout :%s\n", ki.timeout)
 
 	prodProps := &kafka.ConfigMap{}
 	append(&config.Pub, prodProps)
@@ -59,7 +58,7 @@ func (ki *KafkaIntegrator) init(config *config.Cfg) {
 	consProps := &kafka.ConfigMap{}
 	append(&config.Sub, consProps)
 
-	fmt.Println("making kafka producer")
+	log.Println("making kafka producer")
 
 	p, err := kafka.NewProducer(prodProps)
 
@@ -83,6 +82,7 @@ func (ki *KafkaIntegrator) init(config *config.Cfg) {
 
 func append(spec *config.CfgSpec, configMap *kafka.ConfigMap) {
 	for _, p := range spec.Properties {
+		log.Printf("config: %s", p)
 		configMap.Set(p)
 	}
 }
@@ -100,20 +100,20 @@ func (ki *KafkaIntegrator) fetch() {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				fmt.Printf("[KAFKA] Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
+				log.Printf("[KAFKA] Message on %s:\n%s\n", e.TopicPartition, string(e.Value))
 				if e.Headers != nil {
-					fmt.Printf("[KAFKA] Headers: %v\n", e.Headers)
+					log.Printf("[KAFKA] Headers: %v\n", e.Headers)
 				}
 				ki.onNewMessage(e)
 			case kafka.Error:
-				fmt.Fprintf(os.Stderr, "[KAFKA ERROR] %v: %v\n", e.Code(), e)
+				log.Printf("[KAFKA ERROR] %v: %v\n", e.Code(), e)
 				if e.Code() == kafka.ErrAllBrokersDown {
 					waitTime := 10 * time.Second
-					fmt.Fprintf(os.Stderr, "[KAFKA] Waiting for broker... %s\n", waitTime)
+					log.Printf("[KAFKA] Waiting for broker... %s\n", waitTime)
 					time.Sleep(waitTime)
 				}
 			default:
-				fmt.Printf("[KAFKA IGNORED EVENT] %v\n", e)
+				log.Printf("[KAFKA IGNORED EVENT] %v\n", e)
 			}
 		}
 	}
@@ -128,7 +128,7 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 
 			if cid := ctx[CORRELATION]; cid != nil {
 				if c, _ := ki.correlationMap.Load(cid); c != nil {
-					println("[KI] got cid in the body.context.correlation: " + cid.(string))
+					log.Println("[KI] got cid in the body.context.correlation: " + cid.(string))
 					corr := c.(*Correlaction)
 					corr.resp <- *m
 					return
@@ -141,16 +141,16 @@ func (ki *KafkaIntegrator) onNewMessage(m *kafka.Message) {
 		for _, h := range m.Headers {
 			if h.Key == CORRELATION {
 				cid := string(h.Value)
-				println("[KI] got cid in the header: " + cid)
+				log.Println("[KI] got cid in the header: " + cid)
 
 				c, _ := ki.correlationMap.Load(cid)
 				if c != nil {
 					corr := c.(*Correlaction)
 					corr.resp <- *m
-					println("cid sent")
+					log.Println("cid sent")
 					break
 				} else {
-					println("no map hit for " + cid)
+					log.Println("no map hit for " + cid)
 				}
 			}
 		}
@@ -166,7 +166,7 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	if req.Body != nil {
 		bodyBytes, err = io.ReadAll(req.Body)
 		if err != nil {
-			fmt.Printf("Body reading error: %v", err)
+			log.Printf("Body reading error: %v", err)
 			return
 		}
 		defer req.Body.Close()
@@ -176,7 +176,7 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 		cid = util.UUID()
 		ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
 		if ctxAtt {
-			fmt.Printf("[KI] New context attached [%s].\n", cid)
+			log.Printf("[KI] New context attached [%s].\n", cid)
 		}
 	}
 	ki.publishToKafka(bodyBytes, cid)
@@ -245,7 +245,7 @@ func (ki *KafkaIntegrator) attachContext(input []byte, cid string) (attached boo
 }
 
 func (ki *KafkaIntegrator) publishToKafka(data []byte, cid string) {
-	fmt.Printf("[KI] Publishing: [%s], correlation[%s]\n", string(data), cid)
+	log.Printf("[KI] Publishing: [%s], correlation[%s]\n", string(data), cid)
 
 	deliveryChan := make(chan kafka.Event)
 
@@ -276,17 +276,17 @@ func handleEvents(events chan kafka.Event) {
 			return
 
 		default:
-			fmt.Printf("Ignored event: %s\n", ev)
+			log.Printf("Ignored event: %s\n", ev)
 		}
 	}
 }
 
 func onMessage(m *kafka.Message) {
-	fmt.Println(m)
+	log.Println(m)
 	if m.TopicPartition.Error != nil {
-		fmt.Printf("[KAFKA] Delivery failed: %v\n", m.TopicPartition.Error)
+		log.Printf("[KAFKA] Delivery failed: %v\n", m.TopicPartition.Error)
 	} else {
-		fmt.Printf("[KAFKA] Delivered message to topic %s [%d] at offset %v\n",
+		log.Printf("[KAFKA] Delivered message to topic %s [%d] at offset %v\n",
 			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 	}
 }
@@ -299,7 +299,7 @@ func correlationInBody(body []byte) (bool, string) {
 
 		if full {
 			cid := ctx.(string)
-			fmt.Printf("[KI] Extracted CID [%s], full-path [%v].\n", cid, full)
+			log.Printf("[KI] Extracted CID [%s], full-path [%v].\n", cid, full)
 			return true, cid
 		}
 
