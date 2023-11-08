@@ -1,11 +1,4 @@
-FROM golang:1.17.11-bullseye
-
-RUN set -ex; \
-  mkdir /opt/kafka-gateway; \
-  go get -u gopkg.in/confluentinc/confluent-kafka-go.v1/kafka;
-
-ARG VCS=unknown
-ARG BUILD_DATE=unknown
+FROM golang:1.18.10-bullseye as builder
 
 ENV DEV=/opt/kafka-gateway
 RUN mkdir -p $DEV
@@ -15,8 +8,20 @@ ADD . $DEV
 
 RUN set -ex; \
   ls -ls; \
-  go version; \ 
+  go version; \
+  go get -u github.com/confluentinc/confluent-kafka-go/v2/kafka; \
   go build -o ./bin/gateway;
+
+FROM debian:latest
+ENV DEV=/opt/kafka-gateway
+RUN mkdir -p $DEV
+
+WORKDIR $DEV
+COPY entrypoint.sh entrypoint.sh
+COPY --from=builder /opt/kafka-gateway/bin/gateway /opt/kafka-gateway/bin/gateway
+
+ARG VCS=unknown
+ARG BUILD_DATE=unknown
 
 ENV PATH=$PATH:$DEV/bin
 

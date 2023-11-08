@@ -23,3 +23,12 @@ Enviroment variables:
 ### Tips
 
 Setup the env `CGO_ENABLED=0` in order to build app with kafka lib.
+
+Update notes:
+```bash
+# 2023-11-08
+
+go get -u github.com/confluentinc/confluent-kafka-go/v2/kafka
+go mod tidy
+
+```
