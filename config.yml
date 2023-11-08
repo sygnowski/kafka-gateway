@@ -1,0 +1,14 @@
+app:
+  port: 8080
+  timeout: 10
+  jwt-chk: false
+  id-gen-type: uuid
+  context: /
+pub:
+  topic: pub-topic
+  properties:
+   - "prop.name=prop.value"
+sub:
+  topic: sub-topic
+  properties:
+   - "prop.name=prop.value"

@@ -71,7 +71,7 @@ buildWindwsBins() {
 }
 
 runTest() {
-    go test -v -timeout 30s s7i.io/kafka-gateway/internal/kafint s7i.io/kafka-gateway/internal/util
+    go test -v -timeout 30s ./internal/*
 }
 
 git_ref() {
