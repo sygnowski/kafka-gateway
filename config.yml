@@ -2,7 +2,7 @@ app:
   port: 8080
   timeout: 10
   jwt-chk: false
-  id-gen-type: uuid
+  id-gen-kind: uuid
   context: /
 pub:
   topic: pub-topic

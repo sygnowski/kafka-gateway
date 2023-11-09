@@ -39,10 +39,11 @@ type KafkaIntegrator struct {
 	cfg            *config.Cfg
 	correlationMap sync.Map
 	timeout        time.Duration
+	idGen          util.IdGen
 }
 
 func NewKafkaIntegrator(config *config.Cfg) *KafkaIntegrator {
-	kint := KafkaIntegrator{}
+	kint := KafkaIntegrator{idGen: *util.NewIdGen(&config.App)}
 	kint.init(config)
 	return &kint
 }
@@ -173,7 +174,7 @@ func (ki *KafkaIntegrator) Publish(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if cidExists, cid = correlationInBody(bodyBytes); !cidExists && cid == "" {
-		cid = util.UUID()
+		cid = ki.idGen.MakeId()
 		ctxAtt, bodyBytes = ki.attachContext(bodyBytes, cid)
 		if ctxAtt {
 			log.Printf("[KI] New context attached [%s].\n", cid)

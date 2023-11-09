@@ -14,9 +14,10 @@ type Cfg struct {
 }
 
 type CfgApp struct {
-	Port    int
-	Timeout uint32
-	Context string
+	Port      int
+	Timeout   uint32
+	Context   string
+	IdGenKind string `yaml:"id-gen-kind"`
 }
 
 type CfgSpec struct {

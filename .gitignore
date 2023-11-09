@@ -1,4 +1,5 @@
 bin/
 tmp/
 .idea/
+.vscode/
 kafka-gateway
