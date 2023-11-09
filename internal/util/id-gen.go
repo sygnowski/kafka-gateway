@@ -7,24 +7,36 @@ import (
 	"s7i.io/kafka-gateway/internal/config"
 )
 
+const (
+	KIND_UUID = iota + 10
+	KIND_ULID
+)
+
+var kindOf = map[string]int{
+	"uuid": KIND_UUID,
+	"ulid": KIND_ULID,
+}
+
 type IdGen struct {
-	kind string
+	kind int
 }
 
 func NewIdGen(app *config.CfgApp) *IdGen {
-	gen := IdGen{kind: app.IdGenKind}
+	k := kindOf[app.IdGenKind]
+	if k == 0 {
+		log.Fatalf("[Oops] Bad Id Gen Kind: %s, required: uuid or ulid\n", app.IdGenKind)
+	}
+	gen := IdGen{kind: k}
 	return &gen
 }
 
 func (idGen *IdGen) MakeId() string {
 	switch {
-	case idGen.kind == "uuid":
+	case idGen.kind == KIND_UUID:
 		return UUID()
-	case idGen.kind == "ulid":
+	case idGen.kind == KIND_ULID:
 		return ulid.Make().String()
 	default:
-		log.Fatalf("[Oops] bad Id Gen Kind: %s, required: uuid | ulid\n", idGen.kind)
-
-		return ""
+		panic("oops")
 	}
 }
