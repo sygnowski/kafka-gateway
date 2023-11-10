@@ -26,7 +26,7 @@ app:
   port: 8080
   timeout: ${TIMEOUT}
   jwt-chk: false
-  id-gen-kind: uuid
+  id-gen-kind: ulid
   context: /
 pub:
   topic: ${PUBLISH_TOPIC}
