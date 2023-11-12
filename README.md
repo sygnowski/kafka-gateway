@@ -1,6 +1,6 @@
-[![Total alerts](https://img.shields.io/lgtm/alerts/g/sygnowski/kafka-gateway.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sygnowski/kafka-gateway/alerts/)
-
 # Kafka Http Gateway
+
+Objective: Let's make HTTP flow supported via Kafka topic channel in order to support stream application.
 
 ### Configuration
 
@@ -15,11 +15,6 @@ Enviroment variables:
 
  - run `./dev.sh run host.docker.internal:9092`
 
-
-### Dependenices
-
-[kafka support in go](http://github.com/confluentinc/confluent-kafka-go)
-
 ### Tips
 
 Setup the env `CGO_ENABLED=0` in order to build app with kafka lib.
@@ -32,3 +27,9 @@ go get -u github.com/confluentinc/confluent-kafka-go/v2/kafka
 go mod tidy
 
 ```
+
+### Stack
+ - [go-kafka](http://github.com/confluentinc/confluent-kafka-go)
+ - [gin](https://github.com/gin-gonic/gin)
+ - [uild](https://github.com/oklog/ulid)
+ - [jwt](https://github.com/golang-jwt/jwt)
